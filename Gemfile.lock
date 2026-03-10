@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    claude-matrix (1.0.3)
+    claude-matrix (1.0.4)
       oj (~> 3.16)
       pastel (~> 0.8)
       tty-cursor (~> 0.7)
