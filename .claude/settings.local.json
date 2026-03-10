@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m json.tool)",
+      "Bash(ls ~/.claude/projects/-Users-kalpakbhosale-Work-circle/ | tail -1 | xargs -I{} head -3 ~/.claude/projects/-Users-kalpakbhosale-Work-circle/{})",
+      "Bash(wc -l ~/.claude/projects/-Users-kalpakbhosale-Work-circle/6fd8d12b-ef86-4c71-9e40-bc641ef5494f.jsonl && wc -l ~/.claude/projects/-Users-kalpakbhosale-Work-claude-matrix/*.jsonl 2>/dev/null | tail -5)",
+      "Bash(bundle install:*)",
+      "Bash(chmod +x /Users/kalpakbhosale/Work/claude-matrix/bin/claude-matrix)",
+      "Bash(bundle exec:*)"
+    ]
+  }
+}

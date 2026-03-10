@@ -1,0 +1,1195 @@
+# Claude-Matrix: Product Requirements Document
+## Final Version - March 2026
+
+---
+
+## 1. Executive Summary
+
+**Claude-Matrix** is a privacy-first, terminal-based analytics dashboard for Claude Code usage. Built with Ruby and featuring a clean TUI interface, it transforms local Claude Code data into actionable insights about development patterns, productivity, and AI usage—all without any cloud services or API calls.
+
+### The Vision
+Transform this: `~/.claude/stats-cache.json` (hidden JSON file)  
+Into this: Beautiful TUI dashboard showing streaks, tool usage, work modes, and productivity patterns
+
+### Core Principles
+- **100% Local**: All data stays on your machine
+- **Zero APIs**: No calls to Anthropic or any external service
+- **Privacy First**: Read-only access to Claude Code data
+- **Developer Friendly**: Built by developers, for developers
+- **Performance**: Sub-100ms dashboard renders
+
+---
+
+## 2. The Opportunity
+
+### What Exists
+Claude Code stores rich usage data in `~/.claude/` including:
+- Pre-computed statistics (`stats-cache.json`)
+- Full session transcripts (JSONL files)
+- Tool usage history
+- Hourly activity patterns
+- Token consumption by model
+
+### What's Missing
+- No way to visualize this data
+- No insights into productivity patterns
+- No understanding of tool usage
+- No streak tracking or motivation
+- No cost projections
+
+### What We're Building
+A beautiful terminal dashboard that answers:
+- "How productive was I this week?"
+- "What's my longest coding streak?"
+- "Which tools do I use most?"
+- "Am I in exploration or building mode?"
+- "What's my busiest coding hour?"
+
+---
+
+## 3. Project Goals
+
+### Primary Objectives
+1. **Instant Visibility**: Launch dashboard in <100ms
+2. **Useful Insights**: Surface patterns developers care about
+3. **Zero Friction**: No setup, no config, just works
+4. **Daily Habit**: Make checking stats addictive (streaks!)
+5. **Privacy Guarantee**: Never touch network, never send data
+
+### Success Metrics
+- Parse 100% of Claude Code data accurately
+- Dashboard renders in <100ms
+- Tool usage matches Claude Code exactly
+- Users check it daily (streak motivation)
+- Zero crashes on production data
+
+### Non-Goals (v1.0)
+- ❌ Cloud sync or backups
+- ❌ Team/multi-user features
+- ❌ Cost optimization AI
+- ❌ Integration with other tools
+- ❌ Web dashboard
+- ❌ Real-time notifications
+
+---
+
+## 4. Technical Architecture
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              User Uses Claude Code                      │
+│  (Coding, debugging, building features)                 │
+└────────────────────┬────────────────────────────────────┘
+                     │ Writes automatically
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│                 ~/.claude/                              │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ stats-cache.json (Pre-computed by Claude Code)   │  │
+│  │  • totalSessions, totalMessages                  │  │
+│  │  • dailyActivity[], modelUsage{}                 │  │
+│  │  • hourCounts{}, longestSession                  │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ projects/{encoded-path}/                         │  │
+│  │  • {session-uuid}.jsonl (Full transcripts)       │  │
+│  │  • Contains: tools, messages, timestamps         │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ history.jsonl (All prompts ever typed)           │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                     │
+                     │ Read on demand
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│           claude-matrix sync (First run only)           │
+│  1. Read stats-cache.json → 80% of metrics              │
+│  2. Parse JSONL files → Extract tools, work modes       │
+│  3. Cache in ~/.claude-matrix/cache.db (SQLite)         │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     │ Instant read
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│              claude-matrix (Dashboard)                  │
+│  1. Read from local SQLite cache                        │
+│  2. Compute derived metrics (streaks, percentages)      │
+│  3. Render TUI with TTY toolkit                         │
+│  4. Refresh on keypress (r) or auto (every 5 min)       │
+└─────────────────────────────────────────────────────────┘
+```
+
+### File Locations
+
+```bash
+# Claude Code data (read-only)
+~/.claude/
+├── stats-cache.json          # Pre-computed stats
+├── history.jsonl             # All prompts
+└── projects/                 # Session transcripts
+    └── {encoded-path}/
+        └── {session-uuid}.jsonl
+
+# Claude-Matrix data (our cache)
+~/.claude-matrix/
+├── cache.db                  # SQLite cache
+├── config.yml                # User settings
+└── exports/                  # CSV/JSON exports
+```
+
+---
+
+## 5. Data Sources (In Detail)
+
+### 5.1 Primary Source: `stats-cache.json`
+
+**Location**: `~/.claude/stats-cache.json`  
+**Updated by**: Claude Code (automatically)  
+**Format**: Single JSON object
+
+**What we get for FREE**:
+
+```json
+{
+  "version": 1,
+  "lastComputedDate": "2026-03-10",
+  "totalSessions": 83,
+  "totalMessages": 1972,
+  "firstSessionDate": "2026-01-15T10:30:00.000Z",
+  
+  "dailyActivity": [
+    {
+      "date": "2026-03-10",
+      "messageCount": 45,
+      "sessionCount": 3,
+      "toolCallCount": 89
+    }
+  ],
+  
+  "modelUsage": {
+    "claude-opus-4-6": {
+      "inputTokens": 134000,
+      "outputTokens": 389000,
+      "cacheReadInputTokens": 2150000,
+      "cacheCreationInputTokens": 245000
+    },
+    "claude-opus-4-5-20251101": {
+      "inputTokens": 117700,
+      "outputTokens": 345800
+    }
+  },
+  
+  "longestSession": {
+    "sessionId": "buzzing-frolicking-adleman",
+    "duration": 2725776000,
+    "messageCount": 757
+  },
+  
+  "hourCounts": {
+    "9": 23,
+    "14": 45,
+    "22": 67
+  }
+}
+```
+
+**Metrics we extract**:
+- Sessions, messages, tokens (in/out)
+- Daily activity for charts
+- Model distribution
+- Longest session
+- Hourly activity heatmap
+- First session date (for "Since" display)
+
+### 5.2 Secondary Source: Session JSONL Files
+
+**Location**: `~/.claude/projects/{encoded-path}/{session-uuid}.jsonl`  
+**Format**: Line-delimited JSON (one event per line)
+
+**Sample lines**:
+
+```jsonl
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Build authentication"}]},"timestamp":"2026-03-10T14:30:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll help..."},{"type":"tool_use","name":"write_to_file","input":{"path":"auth.rb"}}]},"timestamp":"2026-03-10T14:30:15.000Z","usage":{"input_tokens":1234,"output_tokens":5678}}
+```
+
+**What we extract**:
+- Tool usage: `write_to_file`, `bash`, `read_file`, etc.
+- Session timestamps (for streak calculation)
+- Message content (for prompt analysis)
+- Git branches (from metadata)
+
+**Parse once, cache forever** - these files don't change after session ends.
+
+### 5.3 Tertiary Source: `history.jsonl`
+
+**Location**: `~/.claude/history.jsonl`  
+**Format**: One prompt per line
+
+```jsonl
+{"display":"Build user auth","timestamp":1709856234567,"project":"/Users/kapil/circle"}
+{"display":"Fix the login bug","timestamp":1709856334567,"project":"/Users/kapil/circle"}
+```
+
+**What we extract**:
+- Average prompt length
+- Most common words ("lets", "now", "fix")
+- Prompt patterns
+
+---
+
+## 6. Core Features (Detailed)
+
+### 6.1 Dashboard Overview
+
+**Inspired by**: The reference screenshot showing comprehensive stats
+
+```
+┌─ Claude Matrix ─────────────────────────────────────────────────┐
+│                                                                  │
+│  Sessions: 83    Tokens In: 251.7K    Tokens Out: 734.8K       │
+│  Projects: 18                          Since: Jan 2026          │
+│                                                                  │
+│  ┌─ Streaks ──────────────────────────────────────────────┐    │
+│  │  Current Streak: 3 days    Longest Streak: 12 days    │    │
+│  │  Active Days: 86                                        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─ Personal Bests ───────────────────────────────────────┐    │
+│  │  Longest Session: 757h16m (buzzing-frolicking-adleman) │    │
+│  │  Most Productive Day: 2026-03-03 (6 sessions)          │    │
+│  │  Busiest Hour: 22:00                                    │    │
+│  │  Favorite Tool: Bash (1385 calls)                       │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─ Work Mode ────────────────────────────────────────────┐    │
+│  │  Exploration 28%    Building 28%    Testing 43%        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─ Activity (last 30 days) ─────────────────────────────┐    │
+│  │      ██      ██      ██      ████   74                │    │
+│  │    ████    ████    ████  ██████                        │    │
+│  │  ████████████████████████████████                      │    │
+│  │    28d     21d     14d      7d                         │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─ Activity Heatmap (day × hour) ──────────────────────┐    │
+│  │        0    3    6    9   12   15   18   21          │    │
+│  │  Mon  ░░  ░░  ░░  ██  ██  ░░  ██  ██                │    │
+│  │  Tue  ░░  ░░  ░░  ░░  ██  ██  ░░  ██                │    │
+│  │  Wed  ░░  ░░  ░░  ██  ░░  ░░  ██  ██                │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─ Top Tools ────────────────────────────────────────────┐    │
+│  │  Bash        ███████████████████████████████  1385    │    │
+│  │  Edit        ███████████████████████  993             │    │
+│  │  Read        ███████████████  815                      │    │
+│  │  Write       ███  219                                  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  [R]efresh  [S]ync  [E]xport  [Q]uit                           │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 Streak System
+
+**Current Streak**: Consecutive days with at least 1 session
+```ruby
+def calculate_current_streak(daily_activity)
+  sorted_days = daily_activity.map { |d| Date.parse(d['date']) }.sort.reverse
+  
+  streak = 0
+  expected_date = Date.today
+  
+  sorted_days.each do |date|
+    break if date < expected_date
+    streak += 1 if date == expected_date
+    expected_date -= 1
+  end
+  
+  streak
+end
+```
+
+**Longest Streak**: Maximum consecutive days in history
+```ruby
+def calculate_longest_streak(daily_activity)
+  dates = daily_activity.map { |d| Date.parse(d['date']) }.sort
+  
+  max_streak = 1
+  current_streak = 1
+  
+  dates.each_cons(2) do |date1, date2|
+    if (date2 - date1).to_i == 1
+      current_streak += 1
+      max_streak = [max_streak, current_streak].max
+    else
+      current_streak = 1
+    end
+  end
+  
+  max_streak
+end
+```
+
+### 6.3 Work Mode Classification
+
+**Algorithm**: Analyze tool usage patterns
+
+```ruby
+WORK_MODES = {
+  exploration: {
+    tools: ['read_file', 'list_files', 'search_files', 'grep'],
+    color: :cyan
+  },
+  building: {
+    tools: ['write_to_file', 'edit_file', 'new_file'],
+    color: :green
+  },
+  testing: {
+    tools: ['bash', 'execute_command'],
+    color: :yellow
+  }
+}
+
+def classify_work_mode(tools_used)
+  total = tools_used.size.to_f
+  
+  WORK_MODES.transform_values do |mode|
+    count = tools_used.count { |tool| mode[:tools].include?(tool) }
+    ((count / total) * 100).round
+  end
+end
+
+# Example output:
+# { exploration: 28, building: 28, testing: 43 }
+```
+
+### 6.4 Activity Visualizations
+
+**Bar Chart** (Last 30 days):
+```ruby
+require 'unicode_plot'
+
+def render_activity_chart(daily_activity)
+  last_30 = daily_activity.last(30)
+  dates = last_30.map { |d| d['date'][-5..-1] } # "03-10"
+  counts = last_30.map { |d| d['sessionCount'] }
+  
+  UnicodePlot.barplot(
+    dates,
+    counts,
+    title: 'Activity (last 30 days)',
+    height: 10,
+    width: 60
+  )
+end
+```
+
+**Heatmap** (Day × Hour):
+```ruby
+def render_heatmap(hour_counts, daily_activity)
+  # Build 7x24 grid
+  grid = Array.new(7) { Array.new(24, 0) }
+  
+  # Populate from session data
+  sessions.each do |session|
+    day = session.started_at.wday
+    hour = session.started_at.hour
+    grid[day][hour] += 1
+  end
+  
+  # Render with blocks
+  days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  days.each_with_index do |day_name, day|
+    print "  #{day_name}  "
+    (0..23).step(3).each do |hour|
+      print intensity_block(grid[day][hour])
+    end
+    puts
+  end
+end
+
+def intensity_block(count)
+  case count
+  when 0 then '░░'
+  when 1..2 then '▒▒'
+  when 3..5 then '▓▓'
+  else '██'
+  end
+end
+```
+
+### 6.5 Tool Usage Ranking
+
+**Horizontal Bar Chart**:
+
+```ruby
+def render_tool_usage(tools, limit: 10)
+  top_tools = tools.sort_by { |_, count| -count }.first(limit)
+  max_count = top_tools.first[1]
+  
+  top_tools.each do |tool, count|
+    bar_width = (count.to_f / max_count * 40).round
+    bar = '█' * bar_width
+    
+    puts "  %-15s %s %d" % [tool, bar.ljust(40), count]
+  end
+end
+
+# Output:
+# Bash           ████████████████████████████████████████  1385
+# Edit           ███████████████████████████████  993
+# Read           ████████████████████  815
+```
+
+---
+
+## 7. Technical Stack
+
+### Core Technologies
+
+```ruby
+# Gemfile
+source 'https://rubygems.org'
+
+# Core
+gem 'sqlite3', '~> 2.0'
+gem 'oj', '~> 3.16'              # Fast JSON parsing
+
+# TUI Framework
+gem 'tty-box', '~> 0.7'
+gem 'tty-cursor', '~> 0.7'
+gem 'tty-screen', '~> 0.8'
+gem 'tty-reader', '~> 0.9'
+gem 'pastel', '~> 0.8'           # Colors
+
+# Charts
+gem 'unicode_plot', '~> 0.0.5'
+
+# Utilities
+gem 'chronic', '~> 0.10'         # Natural date parsing
+gem 'listen', '~> 3.8'           # File watching
+
+# Development
+group :development do
+  gem 'rspec', '~> 3.12'
+  gem 'pry', '~> 0.14'
+end
+```
+
+### Database Schema
+
+```ruby
+# db/migrate/001_create_schema.rb
+class CreateSchema < ActiveRecord::Migration[7.0]
+  def change
+    # Parsed sessions
+    create_table :sessions do |t|
+      t.string :session_id, null: false, index: true
+      t.string :project_path
+      t.datetime :started_at
+      t.datetime :ended_at
+      t.integer :message_count
+      t.json :tools_used
+      t.timestamps
+    end
+    
+    # Aggregated daily metrics
+    create_table :daily_metrics do |t|
+      t.date :metric_date, null: false, index: true
+      t.integer :session_count
+      t.integer :message_count
+      t.integer :tool_call_count
+      t.json :tools_breakdown
+      t.timestamps
+    end
+    
+    # Tool usage cache
+    create_table :tool_stats do |t|
+      t.string :tool_name, null: false
+      t.integer :total_calls, default: 0
+      t.datetime :last_used_at
+      t.timestamps
+    end
+    
+    # Metadata
+    create_table :meta do |t|
+      t.string :key, null: false, index: true
+      t.text :value
+      t.timestamps
+    end
+  end
+end
+```
+
+---
+
+## 8. Implementation Plan
+
+### Phase 1: Foundation (Week 1) ✅
+
+**Goal**: Read stats-cache.json and display basic metrics
+
+**Tasks**:
+- [ ] Project setup with bundler
+- [ ] Read stats-cache.json
+- [ ] Calculate basic metrics (sessions, tokens, streaks)
+- [ ] Print to stdout (no TUI yet)
+- [ ] SQLite setup with migrations
+
+**Deliverable**: CLI that prints stats
+```bash
+$ claude-matrix stats
+Sessions: 83
+Tokens In: 251.7K
+Tokens Out: 734.8K
+Current Streak: 3 days
+```
+
+**Code Example**:
+```ruby
+# lib/claude_matrix/stats_reader.rb
+module ClaudeMatrix
+  class StatsReader
+    def self.read
+      path = File.expand_path('~/.claude/stats-cache.json')
+      JSON.parse(File.read(path))
+    end
+    
+    def self.summary
+      stats = read
+      {
+        sessions: stats['totalSessions'],
+        messages: stats['totalMessages'],
+        tokens_in: total_input_tokens(stats),
+        tokens_out: total_output_tokens(stats),
+        first_session: stats['firstSessionDate']
+      }
+    end
+  end
+end
+```
+
+### Phase 2: JSONL Parsing (Week 2) 🔄
+
+**Goal**: Extract tool usage and work modes from session files
+
+**Tasks**:
+- [ ] JSONL parser for session files
+- [ ] Extract tool calls
+- [ ] Classify work modes
+- [ ] Cache in SQLite
+- [ ] Incremental sync (only new sessions)
+
+**Deliverable**: `claude-matrix sync` command
+```bash
+$ claude-matrix sync
+Scanning ~/.claude/projects...
+Found 83 sessions
+Parsing... ████████████████████ 100%
+Extracted 4565 tool calls
+Cached to ~/.claude-matrix/cache.db
+Done! (2.3s)
+```
+
+**Code Example**:
+```ruby
+# lib/claude_matrix/session_parser.rb
+class SessionParser
+  def parse(file_path)
+    tools = []
+    started_at = nil
+    ended_at = nil
+    
+    File.readlines(file_path).each do |line|
+      data = JSON.parse(line)
+      
+      started_at ||= data['timestamp']
+      ended_at = data['timestamp']
+      
+      if data['type'] == 'assistant'
+        content = data.dig('message', 'content') || []
+        content.each do |block|
+          tools << block['name'] if block['type'] == 'tool_use'
+        end
+      end
+    end
+    
+    {
+      session_id: File.basename(file_path, '.jsonl'),
+      started_at: Time.parse(started_at),
+      ended_at: Time.parse(ended_at),
+      tools_used: tools
+    }
+  end
+end
+```
+
+### Phase 3: TUI Dashboard (Week 3) 🎨
+
+**Goal**: Beautiful terminal interface
+
+**Tasks**:
+- [ ] TTY-based layout with boxes
+- [ ] Activity bar chart
+- [ ] Heatmap visualization
+- [ ] Tool usage horizontal bars
+- [ ] Keyboard controls (r, s, e, q)
+- [ ] Auto-refresh
+
+**Deliverable**: `claude-matrix` launches dashboard
+
+**Code Example**:
+```ruby
+# lib/claude_matrix/dashboard.rb
+require 'tty-box'
+require 'tty-screen'
+require 'pastel'
+
+class Dashboard
+  def initialize
+    @pastel = Pastel.new
+    @screen_width = TTY::Screen.width
+    @screen_height = TTY::Screen.height
+  end
+  
+  def render
+    clear_screen
+    print_header
+    print_streaks
+    print_work_mode
+    print_activity_chart
+    print_tool_usage
+    print_controls
+  end
+  
+  private
+  
+  def print_header
+    stats = StatsReader.summary
+    
+    box = TTY::Box.frame(
+      "Sessions: #{stats[:sessions]}  " \
+      "Tokens In: #{format_number(stats[:tokens_in])}  " \
+      "Tokens Out: #{format_number(stats[:tokens_out])}",
+      padding: 1,
+      align: :center
+    )
+    
+    puts box
+  end
+  
+  def format_number(num)
+    if num > 1_000_000
+      "%.1fM" % (num / 1_000_000.0)
+    elsif num > 1000
+      "%.1fK" % (num / 1000.0)
+    else
+      num.to_s
+    end
+  end
+end
+```
+
+### Phase 4: Polish & Distribution (Week 4) 🚀
+
+**Goal**: Production-ready gem
+
+**Tasks**:
+- [ ] Error handling for missing data
+- [ ] Config file support
+- [ ] Export to CSV/JSON
+- [ ] RSpec tests
+- [ ] Documentation
+- [ ] Package as gem
+- [ ] GitHub release
+
+**Deliverable**: `gem install claude-matrix`
+
+---
+
+## 9. CLI Interface
+
+### Commands
+
+```bash
+# Launch interactive dashboard (main use case)
+claude-matrix
+claude-matrix dashboard
+
+# Sync data from Claude Code
+claude-matrix sync              # One-time sync
+claude-matrix sync --watch      # Continuous watching
+
+# Quick stats (no TUI)
+claude-matrix stats             # All stats
+claude-matrix stats --today     # Today only
+claude-matrix stats --week      # This week
+
+# Export data
+claude-matrix export            # Export to CSV
+claude-matrix export --json     # Export as JSON
+claude-matrix export --format md  # Markdown report
+
+# Maintenance
+claude-matrix reset             # Clear cache, re-sync
+claude-matrix doctor            # Check data access
+claude-matrix version           # Show version
+```
+
+### Configuration
+
+```yaml
+# ~/.claude-matrix/config.yml
+claude_code:
+  data_path: "~/.claude"
+  auto_sync: true
+
+cache:
+  db_path: "~/.claude-matrix/cache.db"
+  
+tui:
+  theme: "dark"                 # dark, light
+  refresh_interval: 300         # seconds
+  activity_days: 30
+  top_tools_count: 10
+  
+export:
+  default_format: "csv"
+  output_dir: "~/claude-matrix-exports"
+```
+
+---
+
+## 10. Key Algorithms
+
+### Streak Calculation
+
+```ruby
+def calculate_streaks(daily_activity)
+  dates = daily_activity
+    .map { |d| Date.parse(d['date']) }
+    .sort
+    .reverse
+  
+  current_streak = 0
+  longest_streak = 0
+  temp_streak = 1
+  
+  # Current streak
+  expected = Date.today
+  dates.each do |date|
+    break if date < expected
+    current_streak += 1 if date == expected
+    expected -= 1
+  end
+  
+  # Longest streak
+  dates.sort.each_cons(2) do |d1, d2|
+    if (d2 - d1).to_i == 1
+      temp_streak += 1
+      longest_streak = [longest_streak, temp_streak].max
+    else
+      temp_streak = 1
+    end
+  end
+  
+  {
+    current: current_streak,
+    longest: longest_streak,
+    active_days: dates.size
+  }
+end
+```
+
+### Work Mode Distribution
+
+```ruby
+def calculate_work_modes(all_tools)
+  exploration_tools = ['read_file', 'list_files', 'search_files', 'grep']
+  building_tools = ['write_to_file', 'edit_file', 'new_file']
+  testing_tools = ['bash', 'execute_command']
+  
+  total = all_tools.size.to_f
+  
+  {
+    exploration: (all_tools.count { |t| exploration_tools.include?(t) } / total * 100).round,
+    building: (all_tools.count { |t| building_tools.include?(t) } / total * 100).round,
+    testing: (all_tools.count { |t| testing_tools.include?(t) } / total * 100).round
+  }
+end
+```
+
+### Most Productive Day
+
+```ruby
+def most_productive_day(daily_activity)
+  daily_activity
+    .max_by { |d| d['sessionCount'] }
+    .then { |d| [d['date'], d['sessionCount']] }
+end
+```
+
+---
+
+## 11. File Structure
+
+```
+claude-matrix/
+├── bin/
+│   └── claude-matrix                 # Executable
+│
+├── lib/
+│   ├── claude_matrix.rb             # Main module
+│   ├── claude_matrix/
+│   │   ├── version.rb
+│   │   ├── cli.rb                   # Command router
+│   │   ├── config.rb                # Config management
+│   │   │
+│   │   ├── readers/
+│   │   │   ├── stats_reader.rb      # Read stats-cache.json
+│   │   │   ├── session_parser.rb    # Parse JSONL files
+│   │   │   └── history_reader.rb    # Read history.jsonl
+│   │   │
+│   │   ├── analyzers/
+│   │   │   ├── streak_calculator.rb
+│   │   │   ├── work_mode_classifier.rb
+│   │   │   ├── tool_counter.rb
+│   │   │   └── activity_analyzer.rb
+│   │   │
+│   │   ├── visualizers/
+│   │   │   ├── dashboard.rb         # Main TUI
+│   │   │   ├── bar_chart.rb
+│   │   │   ├── heatmap.rb
+│   │   │   └── horizontal_bars.rb
+│   │   │
+│   │   ├── models/
+│   │   │   ├── session.rb
+│   │   │   ├── daily_metric.rb
+│   │   │   ├── tool_stat.rb
+│   │   │   └── meta.rb
+│   │   │
+│   │   ├── sync.rb                  # Data sync engine
+│   │   ├── exporter.rb              # CSV/JSON export
+│   │   └── watcher.rb               # File watching
+│   │
+│   └── tasks/
+│       └── database.rake
+│
+├── db/
+│   ├── migrate/
+│   │   └── 001_create_schema.rb
+│   └── schema.rb
+│
+├── spec/
+│   ├── spec_helper.rb
+│   ├── stats_reader_spec.rb
+│   ├── session_parser_spec.rb
+│   └── streak_calculator_spec.rb
+│
+├── config/
+│   └── default_config.yml
+│
+├── Gemfile
+├── Rakefile
+├── README.md
+├── LICENSE
+└── claude-matrix.gemspec
+```
+
+---
+
+## 12. Sample Usage
+
+```bash
+# First time setup
+$ gem install claude-matrix
+$ claude-matrix sync
+
+Scanning ~/.claude/projects...
+Found 83 sessions across 18 projects
+Parsing sessions... ████████████████████ 100%
+
+✓ Processed 83 sessions
+✓ Extracted 4565 tool calls
+✓ Computed 86 daily metrics
+✓ Cached to ~/.claude-matrix/cache.db
+
+Done! Run 'claude-matrix' to view dashboard
+
+# Launch dashboard
+$ claude-matrix
+
+[Beautiful TUI renders]
+
+# Quick stats
+$ claude-matrix stats --today
+
+Today's Activity
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sessions: 5
+Messages: 127
+Tools Used: 34
+Most Used: bash (12 times)
+
+Time Spent: 2h 15m
+Active Hours: 9-11am, 2-4pm
+
+# Export data
+$ claude-matrix export --format csv
+Exported to ~/claude-matrix-exports/claude-matrix-2026-03-10.csv
+
+# Watch mode (auto-sync on new sessions)
+$ claude-matrix sync --watch
+👀 Watching ~/.claude/projects for changes...
+```
+
+---
+
+## 13. Testing Strategy
+
+### Unit Tests
+
+```ruby
+# spec/stats_reader_spec.rb
+RSpec.describe ClaudeMatrix::StatsReader do
+  describe '.read' do
+    it 'parses stats-cache.json correctly' do
+      stats = described_class.read
+      expect(stats['totalSessions']).to be_a(Integer)
+      expect(stats['modelUsage']).to be_a(Hash)
+    end
+  end
+  
+  describe '.summary' do
+    it 'extracts key metrics' do
+      summary = described_class.summary
+      expect(summary).to have_key(:sessions)
+      expect(summary).to have_key(:tokens_in)
+      expect(summary[:sessions]).to be > 0
+    end
+  end
+end
+```
+
+### Integration Tests
+
+```ruby
+# spec/integration/sync_spec.rb
+RSpec.describe 'claude-matrix sync' do
+  it 'processes all sessions' do
+    output = `bin/claude-matrix sync`
+    expect(output).to include('Processed')
+    expect(output).to include('sessions')
+    
+    # Verify database
+    db = SQLite3::Database.new(cache_path)
+    count = db.execute('SELECT COUNT(*) FROM sessions').first.first
+    expect(count).to be > 0
+  end
+end
+```
+
+---
+
+## 14. Success Criteria
+
+### Functional Requirements
+✅ Parse 100% of Claude Code sessions without errors  
+✅ Accurate token counts matching stats-cache.json  
+✅ Streak calculations verified against manual count  
+✅ Dashboard renders in <100ms  
+✅ Works with empty/new Claude Code installations  
+
+### User Experience
+✅ Zero configuration required (works out of box)  
+✅ Clear error messages ("Claude Code not found")  
+✅ Keyboard navigation only (no mouse needed)  
+✅ Auto-detects Claude Code data location  
+✅ Gracefully handles corrupted JSONL files  
+
+### Performance
+✅ Initial sync: <5s for 100 sessions  
+✅ Dashboard launch: <100ms  
+✅ Memory usage: <50MB  
+✅ Incremental sync: <1s for 10 new sessions  
+
+---
+
+## 15. Distribution & Launch
+
+### Packaging
+
+```bash
+# Build gem
+$ gem build claude-matrix.gemspec
+Successfully built RubyGem
+Name: claude-matrix
+Version: 1.0.0
+File: claude-matrix-1.0.0.gem
+
+# Install locally
+$ gem install ./claude-matrix-1.0.0.gem
+
+# Publish to RubyGems
+$ gem push claude-matrix-1.0.0.gem
+```
+
+### Installation Methods
+
+```bash
+# Via RubyGems (primary)
+gem install claude-matrix
+
+# Via Bundler
+gem 'claude-matrix'
+
+# Via Homebrew (future)
+brew install claude-matrix
+
+# From source
+git clone https://github.com/yourusername/claude-matrix
+cd claude-matrix
+bundle install
+rake install
+```
+
+### System Requirements
+- Ruby 3.0+
+- macOS or Linux (Windows support TBD)
+- Claude Code installed and used at least once
+- Terminal with Unicode support
+
+---
+
+## 16. Launch Plan
+
+### Week 1: Internal Testing
+- Test with 5-10 Claude Code power users
+- Fix critical bugs
+- Refine UX based on feedback
+
+### Week 2: Soft Launch
+- Publish gem to RubyGems
+- Tweet about it
+- Post in /r/ruby
+- Share in Claude Code Discord
+
+### Week 3: Marketing Push
+- Show HN post
+- Product Hunt launch
+- Blog post with screenshots
+- Demo video
+
+### Week 4: Iterate
+- Respond to feedback
+- Fix bugs
+- Plan v2.0 features
+
+---
+
+## 17. Future Enhancements (v2.0+)
+
+### Potential Features
+- **Compare periods**: "This week vs last week"
+- **Goals & targets**: Set daily session goals
+- **Project drilldown**: Per-project detailed stats
+- **Prompt library**: Save and reuse effective prompts
+- **Cost tracking**: Add pricing data for cost estimates
+- **Web export**: Generate HTML reports
+- **Notifications**: Daily/weekly summary emails
+- **Plugins**: Allow custom metrics/visualizations
+
+### Integration Ideas
+- Export to Notion
+- Slack daily summary
+- GitHub commit correlation
+- VS Code extension
+
+---
+
+## 18. Appendix: Sample Data
+
+### Example stats-cache.json (Real Structure)
+
+```json
+{
+  "version": 1,
+  "lastComputedDate": "2026-03-10",
+  "dailyActivity": [
+    {"date": "2026-03-10", "messageCount": 45, "sessionCount": 3, "toolCallCount": 89},
+    {"date": "2026-03-09", "messageCount": 67, "sessionCount": 5, "toolCallCount": 134},
+    {"date": "2026-03-08", "messageCount": 23, "sessionCount": 2, "toolCallCount": 56}
+  ],
+  "dailyModelTokens": [
+    {"date": "2026-03-10", "tokensByModel": {"claude-opus-4-6": 45678}}
+  ],
+  "modelUsage": {
+    "claude-opus-4-6": {
+      "inputTokens": 134000,
+      "outputTokens": 389000,
+      "cacheReadInputTokens": 2150000,
+      "cacheCreationInputTokens": 245000
+    }
+  },
+  "totalSessions": 83,
+  "totalMessages": 1972,
+  "longestSession": {
+    "sessionId": "abc123",
+    "duration": 2725776000,
+    "messageCount": 757
+  },
+  "firstSessionDate": "2026-01-15T10:30:00.000Z",
+  "hourCounts": {
+    "9": 23, "10": 31, "14": 45, "15": 38, "22": 67
+  }
+}
+```
+
+### Example Session JSONL
+
+```jsonl
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Build authentication"}]},"timestamp":"2026-03-10T14:30:00.000Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll create an auth system"},{"type":"tool_use","name":"write_to_file","input":{"path":"auth.rb"}}]},"usage":{"input_tokens":1234,"output_tokens":5678}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"bash","input":{"command":"rails test"}}]}}
+```
+
+---
+
+## 19. License & Credits
+
+**License**: MIT  
+**Author**: Kapil  
+**Inspired by**: Claude Code's hidden analytics potential  
+**Built with**: Ruby, TTY toolkit, SQLite  
+
+---
+
+## 20. Getting Started (Quick Guide)
+
+```bash
+# 1. Install
+gem install claude-matrix
+
+# 2. Sync data (first time only)
+claude-matrix sync
+
+# 3. Launch dashboard
+claude-matrix
+
+# 4. Enjoy! 🎉
+```
+
+That's it. No configuration. No setup. Just works.
+
+---
+
+**END OF PRD**
+
+Ready to build? This is your blueprint. 🚀
