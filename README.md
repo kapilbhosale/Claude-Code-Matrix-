@@ -34,25 +34,17 @@ A privacy-first, terminal analytics dashboard for [Claude Code](https://claude.a
 
 ## Installation
 
-**From source (recommended for now):**
+```bash
+gem install claude-matrix
+```
+
+**From source:**
 
 ```bash
-git clone https://github.com/yourusername/claude-matrix
+git clone https://github.com/kapilbhosale/claude-matrix
 cd claude-matrix
 bundle install
-```
-
-**Run directly:**
-
-```bash
 bundle exec bin/claude-matrix
-```
-
-**Install as a system command:**
-
-```bash
-bundle exec rake install   # or: gem build && gem install ./claude-matrix-1.0.0.gem
-claude-matrix
 ```
 
 ---
@@ -150,6 +142,27 @@ claude-matrix/
 
 
 
+## Releasing a new version
+
+1. Bump `VERSION` in `lib/claude_matrix/version.rb`
+2. Add an entry to `CHANGELOG.md`
+3. Commit, tag, and push:
+
+```bash
+git add -A
+git commit -m "Release v1.x.x"
+git tag v1.x.x
+git push && git push --tags
+```
+
+GitHub Actions picks up the tag and publishes to RubyGems automatically.
+
+> **One-time setup:** add your RubyGems API key as a repository secret named `RUBYGEMS_API_KEY`
+> (GitHub repo → Settings → Secrets and variables → Actions → New repository secret).
+> Get your key from [rubygems.org/profile/edit](https://rubygems.org/profile/edit).
+
+---
+
 ## Contributing
 
 1. Fork the repo
@@ -157,7 +170,7 @@ claude-matrix/
 3. Make your changes
 4. Open a pull request
 
-Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/yourusername/claude-matrix/issues).
+Bug reports and feature requests are welcome via [GitHub Issues](https://github.com/kapilbhosale/claude-matrix/issues).
 
 ---
 

@@ -1,3 +1,4 @@
+require_relative "claude_matrix/version"
 require_relative "claude_matrix/readers/stats_reader"
 require_relative "claude_matrix/readers/session_parser"
 require_relative "claude_matrix/readers/history_reader"
@@ -5,7 +6,6 @@ require_relative "claude_matrix/analyzers/metrics"
 require_relative "claude_matrix/visualizers/dashboard"
 
 module ClaudeMatrix
-  VERSION = "1.0.0"
 
   def self.load_sessions(verbose: false)
     files = Readers::SessionParser.jsonl_files
