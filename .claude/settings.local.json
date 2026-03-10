@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m json.tool)",
+      "Bash(ls ~/.claude/projects/-Users-kalpakbhosale-Work-circle/ | tail -1 | xargs -I{} head -3 ~/.claude/projects/-Users-kalpakbhosale-Work-circle/{})",
+      "Bash(wc -l ~/.claude/projects/-Users-kalpakbhosale-Work-circle/6fd8d12b-ef86-4c71-9e40-bc641ef5494f.jsonl && wc -l ~/.claude/projects/-Users-kalpakbhosale-Work-claude-matrix/*.jsonl 2>/dev/null | tail -5)",
+      "Bash(bundle install:*)",
+      "Bash(chmod +x /Users/kalpakbhosale/Work/claude-matrix/bin/claude-matrix)",
+      "Bash(bundle exec:*)",
+      "Bash(gem search:*)",
+      "Bash(curl -s \"https://rubygems.org/api/v1/gems/claude-matrix.json\" 2>/dev/null | python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('TAKEN:', d.get\\('name'\\)\\)\" 2>/dev/null || echo \"NOT FOUND - name is available\")",
+      "Bash(gem build:*)",
+      "Bash(gem contents:*)",
+      "Bash(tar tzf:*)",
+      "Bash(tar xOzf claude-matrix-1.0.0.gem data.tar.gz | tar tz)",
+      "Bash(gem install:*)",
+      "Bash(claude-matrix version:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

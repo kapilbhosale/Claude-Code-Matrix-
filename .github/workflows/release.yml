@@ -1,0 +1,30 @@
+name: Release Gem
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Build gem
+        run: gem build claude-matrix.gemspec
+
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          mkdir -p ~/.gem
+          echo "---" > ~/.gem/credentials
+          echo ":rubygems_api_key: ${GEM_HOST_API_KEY}" >> ~/.gem/credentials
+          chmod 0600 ~/.gem/credentials
+          gem push *.gem
